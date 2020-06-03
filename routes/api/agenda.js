@@ -1,13 +1,24 @@
 const express = require('express');
+const request = require('request');
+const config = require('config');
 const router = express.Router();
-const Agenda = require('../../models/Agenda');
-const mongoose = require('mongoose');
+const auth = require('../../middleware/auth');
+const { check, validationResult } = require('express-validator');
 
-// Get All Agendas
-router.get('/', async (req, res) => {
-  let date = req.params.date;
+const Agenda = require('../../models/Agenda');
+const User = require('../../models/User');
+
+// Get All Agendas Current User
+router.get('/', auth, async (req, res) => {
   try {
-    const agendas = await Agenda.find().populate(date);
+    let date = req.params.date;
+    let user = req.user.id;
+    const agendas = await Agenda.find().sort({ date: -1 });
+
+    if (!user) {
+      return res.status(400).json({ msg: 'There is no agenda for this user' });
+    }
+
     res.json(agendas);
   } catch (err) {
     console.error(err.message);
@@ -15,8 +26,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create or Update Agenda
-router.post('/', async (req, res, next) => {
+// Create or Update User Agenda
+router.post('/', auth, async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   const {
     bookName,
     author,
@@ -32,6 +48,7 @@ router.post('/', async (req, res, next) => {
 
   // Build Agenda Object
   const agendaFields = {};
+  agendaFields.user = req.user.id;
   if (workout) agendaFields.workout = workout;
   if (work) agendaFields.work = work;
 
@@ -54,13 +71,13 @@ router.post('/', async (req, res, next) => {
 
   try {
     var id = req.params.id;
-    let agenda = await Agenda.findOne({ _id: id });
+    let agenda = await Agenda.findOne({ user: req.user.id });
 
     if (agenda) {
       // Update
       console.log('burada');
       agenda = await Agenda.findOneAndUpdate(
-        { _id: id },
+        { user: req.user.id },
         { $set: agendaFields },
         { new: true }
       );
@@ -77,15 +94,15 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// Get Agenda By ID
+// Get Agenda By Agenda ID
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   let date = req.params.date;
-  let id = req.params.id;
+  var id = req.params.id;
   try {
     const agenda = await Agenda.findOne({
       _id: id,
-    }).populate(date);
+    });
 
     if (!agenda) {
       return res.status(400).json({ msg: 'There is no agenda for this id.' });
@@ -99,7 +116,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Delete Agenda
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', auth, async (req, res, next) => {
   var id = req.params.id;
   try {
     await Agenda.findByIdAndRemove({ _id: id });
@@ -111,7 +128,7 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 // Reset Agendas
-router.delete('/', async (req, res, next) => {
+router.delete('/delete', async (req, res, next) => {
   try {
     await Agenda.deleteMany();
     res.json({ msg: 'All Agendas Deleted' });
